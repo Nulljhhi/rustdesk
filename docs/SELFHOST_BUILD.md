@@ -35,6 +35,32 @@ on all interfaces, so a device can be reached as `100.x.y.z`,
 A one-word MagicDNS short name (`pc`) can not be told apart from an ID; use the
 full name or the IP address.
 
+Direct IP access only accepts connections from Tailscale addresses
+(`100.64.0.0/10`, `fd7a:115c:a1e0::/48`) and from the machine itself; other
+peers (e.g. on the same LAN) are disconnected before the password prompt and
+logged. To allow LAN direct access as well, untick "Only allow direct access
+from Tailscale" below "Enable direct IP access" in Settings > Security (option
+`direct-access-tailscale-only`, `Y` by default). This only affects the direct
+listener; connections arranged through the ID/relay server are not filtered.
+
+### Port clash on the machine that runs hbbs
+
+The client's direct access port defaults to 21118 (`RENDEZVOUS_PORT + 2`, see
+`get_direct_port` in `src/rendezvous_mediator.rs`). hbbs listens on TCP 21118
+too (its WebSocket port, main port + 2) on whatever machine runs it, whether or
+not the firewall lets anything reach that port. If both run on one machine, the
+one that starts second normally can not bind the port. For the client, the direct
+listener is then simply not started: it logs `Failed to start direct server on
+port: 21118, ...`, the UI shows nothing, and it does not retry until the port
+setting changes or RustDesk is restarted. Connections through the ID server
+keep working.
+
+On that one machine (e.g. the Windows server), set a different port in the
+client: Settings > Security > "Enable direct IP access" > Port, e.g. `21120`,
+then Apply. Reach that machine directly as `name-or-ip:21120` (for example
+`winbox.tail1234.ts.net:21120` or `100.101.102.103:21120`); the other devices
+keep the default port. The default ports are not changed.
+
 ## Example
 
 Linux/macOS shell:

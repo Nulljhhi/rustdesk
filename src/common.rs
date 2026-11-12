@@ -2511,6 +2511,10 @@ pub fn rustdesk_interval(i: Interval) -> ThrottledInterval {
     ThrottledInterval::new(i)
 }
 
+/// When on (the default), the direct access listener only accepts Tailscale and loopback
+/// peers, see `rendezvous_mediator::direct_server`.
+pub const OPTION_DIRECT_ACCESS_TAILSCALE_ONLY: &str = "direct-access-tailscale-only";
+
 /// Server settings baked in at build time, see docs/SELFHOST_BUILD.md.
 /// They are used as defaults, so a value set in Settings still wins.
 const BUILD_TIME_SERVER_SETTINGS: [(&str, Option<&str>); 4] = [
@@ -2538,7 +2542,14 @@ pub fn has_build_time_servers() -> bool {
 fn build_time_default_settings(servers: &[(&str, Option<&str>)]) -> Vec<(String, String)> {
     // Direct IP access is on by default in this fork, so a device stays reachable by its
     // (Tailscale) address when the ID server is down.
-    let mut res = vec![(keys::OPTION_DIRECT_SERVER.to_owned(), "Y".to_owned())];
+    // Only Tailscale peers may use it, unless switched off in Settings.
+    let mut res = vec![
+        (keys::OPTION_DIRECT_SERVER.to_owned(), "Y".to_owned()),
+        (
+            OPTION_DIRECT_ACCESS_TAILSCALE_ONLY.to_owned(),
+            "Y".to_owned(),
+        ),
+    ];
     for (k, v) in servers {
         if let Some(v) = non_empty_build_time_value(*v) {
             res.push((k.to_string(), v.to_owned()));
@@ -3162,10 +3173,16 @@ mod tests {
 
     #[test]
     fn build_time_default_settings_skip_missing_and_empty_values() {
-        let direct = (keys::OPTION_DIRECT_SERVER.to_owned(), "Y".to_owned());
+        let direct = vec![
+            (keys::OPTION_DIRECT_SERVER.to_owned(), "Y".to_owned()),
+            (
+                OPTION_DIRECT_ACCESS_TAILSCALE_ONLY.to_owned(),
+                "Y".to_owned(),
+            ),
+        ];
         assert_eq!(
             build_time_default_settings(&[("custom-rendezvous-server", None), ("key", Some(""))]),
-            vec![direct.clone()]
+            direct
         );
         assert_eq!(
             build_time_default_settings(&[
@@ -3173,14 +3190,17 @@ mod tests {
                 ("relay-server", Some("  ")),
                 ("key", Some("abc=")),
             ]),
-            vec![
+            [
                 direct,
-                (
-                    "custom-rendezvous-server".to_owned(),
-                    "hbbs.tailnet.ts.net".to_owned()
-                ),
-                ("key".to_owned(), "abc=".to_owned()),
+                vec![
+                    (
+                        "custom-rendezvous-server".to_owned(),
+                        "hbbs.tailnet.ts.net".to_owned()
+                    ),
+                    ("key".to_owned(), "abc=".to_owned()),
+                ],
             ]
+            .concat()
         );
     }
 
