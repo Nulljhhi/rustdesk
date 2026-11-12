@@ -1177,6 +1177,11 @@ fn process_software_update_check_response(bytes: Bytes) -> ResultType<()> {
 // Because the url is always `https://api.rustdesk.com/version/latest`.
 #[tokio::main(flavor = "current_thread")]
 pub async fn do_check_software_update() -> hbb_common::ResultType<()> {
+    if has_build_time_servers() {
+        // Self-hosted build: do not contact api.rustdesk.com.
+        clear_software_update_url();
+        return Ok(());
+    }
     let (request, url) =
         hbb_common::version_check_request(hbb_common::VER_TYPE_RUSTDESK_CLIENT.to_string());
     let proxy_conf = Config::get_socks();
@@ -2506,7 +2511,52 @@ pub fn rustdesk_interval(i: Interval) -> ThrottledInterval {
     ThrottledInterval::new(i)
 }
 
+/// Server settings baked in at build time, see docs/SELFHOST_BUILD.md.
+/// They are used as defaults, so a value set in Settings still wins.
+const BUILD_TIME_SERVER_SETTINGS: [(&str, Option<&str>); 4] = [
+    (
+        "custom-rendezvous-server",
+        option_env!("SELFHOST_ID_SERVER"),
+    ),
+    ("relay-server", option_env!("SELFHOST_RELAY_SERVER")),
+    ("api-server", option_env!("SELFHOST_API_SERVER")),
+    ("key", option_env!("SELFHOST_KEY")),
+];
+
+#[inline]
+fn non_empty_build_time_value(v: Option<&str>) -> Option<&str> {
+    v.map(str::trim).filter(|v| !v.is_empty())
+}
+
+/// Whether an ID server was supplied at build time. Such a build never falls back to,
+/// or checks for updates on, the public RustDesk servers.
+#[inline]
+pub fn has_build_time_servers() -> bool {
+    non_empty_build_time_value(BUILD_TIME_SERVER_SETTINGS[0].1).is_some()
+}
+
+fn build_time_default_settings(servers: &[(&str, Option<&str>)]) -> Vec<(String, String)> {
+    // Direct IP access is on by default in this fork, so a device stays reachable by its
+    // (Tailscale) address when the ID server is down.
+    let mut res = vec![(keys::OPTION_DIRECT_SERVER.to_owned(), "Y".to_owned())];
+    for (k, v) in servers {
+        if let Some(v) = non_empty_build_time_value(*v) {
+            res.push((k.to_string(), v.to_owned()));
+        }
+    }
+    res
+}
+
+/// Does not overwrite defaults that are already set, e.g. by a custom client config.
+fn apply_build_time_default_settings() {
+    let mut defaults = config::DEFAULT_SETTINGS.write().unwrap();
+    for (k, v) in build_time_default_settings(&BUILD_TIME_SERVER_SETTINGS) {
+        defaults.entry(k).or_insert(v);
+    }
+}
+
 pub fn load_custom_client() {
+    apply_build_time_default_settings();
     #[cfg(debug_assertions)]
     if let Ok(data) = std::fs::read_to_string("./custom.txt") {
         read_custom_client(data.trim());
@@ -2605,6 +2655,7 @@ pub fn get_dst_align_rgba() -> usize {
 }
 
 pub fn read_custom_client(config: &str) {
+    apply_build_time_default_settings();
     let Ok(data) = decode64(config) else {
         log::error!("Failed to decode custom client config");
         return;
@@ -3077,7 +3128,14 @@ pub fn get_control_permission(
 }
 
 pub fn is_direct_ip_access(peer: &str) -> bool {
-    hbb_common::is_ip_str(peer) || hbb_common::is_domain_port_str(peer)
+    hbb_common::is_ip_str(peer) || hbb_common::is_domain_port_str(peer) || is_domain_str(peer)
+}
+
+/// `{domain}` without a port, e.g. a Tailscale MagicDNS name `pc.tailnet.ts.net`.
+/// It can not be mistaken for a RustDesk ID, which never contains a '.'.
+#[inline]
+pub fn is_domain_str(peer: &str) -> bool {
+    !peer.contains(':') && hbb_common::is_domain_port_str(&format!("{peer}:0"))
 }
 
 // Align the maximum length of the peer id to the maximum length of the peer id in the server.
@@ -3101,6 +3159,54 @@ mod tests {
         self,
         time::{interval, interval_at, sleep, Duration, Instant, Interval},
     };
+
+    #[test]
+    fn build_time_default_settings_skip_missing_and_empty_values() {
+        let direct = (keys::OPTION_DIRECT_SERVER.to_owned(), "Y".to_owned());
+        assert_eq!(
+            build_time_default_settings(&[("custom-rendezvous-server", None), ("key", Some(""))]),
+            vec![direct.clone()]
+        );
+        assert_eq!(
+            build_time_default_settings(&[
+                ("custom-rendezvous-server", Some(" hbbs.tailnet.ts.net ")),
+                ("relay-server", Some("  ")),
+                ("key", Some("abc=")),
+            ]),
+            vec![
+                direct,
+                (
+                    "custom-rendezvous-server".to_owned(),
+                    "hbbs.tailnet.ts.net".to_owned()
+                ),
+                ("key".to_owned(), "abc=".to_owned()),
+            ]
+        );
+    }
+
+    #[test]
+    fn domain_without_port_is_direct_access_but_ids_are_not() {
+        for peer in ["pc.tailnet.ts.net", "PC.example.com"] {
+            assert!(is_domain_str(peer), "rejected {peer:?}");
+            assert!(is_direct_ip_access(peer), "rejected {peer:?}");
+        }
+        for peer in [
+            "123456789",
+            "my_custom-id",
+            "pc",
+            "pc.tailnet.ts.net:21118",
+            "100.64.0.1",
+            "pc.example.123",
+            "pc.tailnet.ts.net.",
+            "",
+        ] {
+            assert!(!is_domain_str(peer), "accepted {peer:?}");
+        }
+        assert!(is_direct_ip_access("pc.tailnet.ts.net:21118"));
+        assert!(is_direct_ip_access("100.64.0.1"));
+        assert!(!is_direct_ip_access("123456789"));
+        assert!(!is_direct_ip_access("pc"));
+    }
 
     #[test]
     fn relay_uuid_rejects_control_bytes_but_not_other_id_formats() {

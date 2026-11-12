@@ -451,11 +451,12 @@ impl Client {
                 false,
             ));
         }
-        // Allow connect to {domain}:{port}
-        if hbb_common::is_domain_port_str(peer) {
+        // Allow connect to {domain}:{port}, or {domain} on the default direct access port
+        if hbb_common::is_domain_port_str(peer) || crate::common::is_domain_str(peer) {
             return Ok((
                 (
-                    connect_tcp_local(peer, None, CONNECT_TIMEOUT).await?,
+                    connect_tcp_local(check_port(peer, RELAY_PORT + 1), None, CONNECT_TIMEOUT)
+                        .await?,
                     true,
                     None,
                     None,
@@ -476,6 +477,9 @@ impl Client {
             crate::get_rendezvous_server(1_000).await
         } else {
             if other_server == PUBLIC_SERVER {
+                if crate::common::has_build_time_servers() {
+                    bail!("The public server is disabled in this build");
+                }
                 (
                     check_port(RENDEZVOUS_SERVERS[0], RENDEZVOUS_PORT),
                     RENDEZVOUS_SERVERS[1..]

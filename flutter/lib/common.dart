@@ -1636,9 +1636,12 @@ String bool2option(String option, bool b) {
       option != kOptionEnableIpv6Punch &&
       option != kOptionEnableWebrtc) {
     res = b ? defaultOptionYes : 'N';
+  } else if (option == kOptionDirectServer) {
+    // On by default in this fork (see docs/SELFHOST_BUILD.md), so "off" must be stored
+    // explicitly; an empty value would fall back to the default.
+    res = b ? 'Y' : 'N';
   } else if (option.startsWith('allow-') ||
       option == kOptionStopService ||
-      option == kOptionDirectServer ||
       option == kOptionForceAlwaysRelay) {
     res = b ? 'Y' : defaultOptionNo;
   } else {
