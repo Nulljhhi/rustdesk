@@ -13,6 +13,7 @@ import 'package:window_manager/window_manager.dart';
 import '../common.dart';
 import '../common/formatter/id_formatter.dart';
 import '../desktop/pages/server_page.dart' as desktop;
+import '../desktop/widgets/connection_popup.dart';
 import '../desktop/widgets/tabbar_widget.dart';
 import '../mobile/pages/server_page.dart';
 import '../mobile/widgets/android_file_transfer_setup.dart';
@@ -549,6 +550,7 @@ class ServerModel with ChangeNotifier {
           _clients[index].authorized = true;
           _clients[index].privacyMode = client.privacyMode;
         }
+        showConnectionPopup(client);
       } else {
         final index = _clients.indexWhere((c) => c.id == client.id);
         if (index >= 0) {
@@ -692,6 +694,7 @@ class ServerModel with ChangeNotifier {
       }
       parent.target?.invokeMethod("cancel_notification", client.id);
       client.authorized = true;
+      showConnectionPopup(client);
       notifyListeners();
     } else {
       bind.cmLoginRes(connId: client.id, res: res);
