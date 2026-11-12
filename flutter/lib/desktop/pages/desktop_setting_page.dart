@@ -1506,6 +1506,15 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
     return [
       _OptionCheckBox(context, 'Enable direct IP access', kOptionDirectServer,
           update: update, enabled: !locked),
+      Offstage(
+        offstage: !option2bool(kOptionDirectServer,
+            bind.mainGetOptionSync(key: kOptionDirectServer)),
+        child: _OptionCheckBox(
+            context,
+            'Only allow direct access from Tailscale',
+            kOptionDirectAccessTailscaleOnly,
+            enabled: !locked),
+      ),
       () {
         // Simple temp wrapper for PR check
         tmpWrapper() {

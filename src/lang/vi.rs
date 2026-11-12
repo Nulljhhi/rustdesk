@@ -827,5 +827,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Request approval", "Yêu cầu phê duyệt"),
         ("Forever", "Vĩnh viễn"),
         ("Connection established", ""),
+        ("Only allow direct access from Tailscale", ""),
     ].iter().cloned().collect();
 }

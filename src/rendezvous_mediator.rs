@@ -1400,6 +1400,27 @@ fn get_direct_port() -> i32 {
     port
 }
 
+/// Peers the direct access listener accepts while `direct-access-tailscale-only` is on:
+/// Tailscale addresses (100.64.0.0/10, fd7a:115c:a1e0::/48) and loopback. IPv4-mapped IPv6
+/// addresses, as seen on a dual-stack listener, are checked as the IPv4 address they carry.
+fn is_tailscale_or_loopback(ip: std::net::IpAddr) -> bool {
+    use std::net::IpAddr;
+    let ip = match ip {
+        IpAddr::V6(v6) => v6.to_ipv4_mapped().map_or(IpAddr::V6(v6), IpAddr::V4),
+        ip => ip,
+    };
+    match ip {
+        IpAddr::V4(v4) => {
+            let o = v4.octets();
+            v4.is_loopback() || (o[0] == 100 && (o[1] & 0xc0) == 64)
+        }
+        IpAddr::V6(v6) => {
+            let s = v6.segments();
+            v6.is_loopback() || (s[0] == 0xfd7a && s[1] == 0x115c && s[2] == 0xa1e0)
+        }
+    }
+}
+
 async fn direct_server(server: ServerPtr) {
     let mut listener = None;
     let mut port = 0;
@@ -1441,6 +1462,18 @@ async fn direct_server(server: ServerPtr) {
                 continue;
             }
             if let Ok(Ok((stream, addr))) = hbb_common::timeout(1000, l.accept()).await {
+                if Config::get_bool_option(crate::common::OPTION_DIRECT_ACCESS_TAILSCALE_ONLY)
+                    && !is_tailscale_or_loopback(addr.ip())
+                {
+                    // Dropping the stream closes it before anything is read or sent.
+                    hbb_common::throttled_log!(
+                        PUNCH_LOG_INTERVAL,
+                        warn,
+                        "Rejected direct access from {}: not a Tailscale address",
+                        addr
+                    );
+                    continue;
+                }
                 stream.set_nodelay(true).ok();
                 log::info!("direct access from {}", addr);
                 let local_addr = stream
@@ -1779,12 +1812,59 @@ impl Drop for CheckIfResendPk {
 #[cfg(test)]
 mod tests {
     use super::{
-        connection_meta, mpsc, tokio, wait_for_retry, AnswererSlot, Duration, IceRoute,
-        Instant, IntoTargetAddr, Ordering, PunchHoleSent, RendezvousMediator, RendezvousMessage,
-        CONNECT_TIMEOUT, MANUAL_RESTARTED, MANUAL_RESTART_NOTIFY, MAX_WEBRTC_ANSWERERS,
-        SHOULD_EXIT, TCP_PUNCHES, UDP_PUNCHES,
+        connection_meta, is_tailscale_or_loopback, mpsc, tokio, wait_for_retry, AnswererSlot,
+        Duration, IceRoute, Instant, IntoTargetAddr, Ordering, PunchHoleSent, RendezvousMediator,
+        RendezvousMessage, CONNECT_TIMEOUT, MANUAL_RESTARTED, MANUAL_RESTART_NOTIFY,
+        MAX_WEBRTC_ANSWERERS, SHOULD_EXIT, TCP_PUNCHES, UDP_PUNCHES,
     };
     use hbb_common::protobuf::Message as _;
+
+    #[test]
+    fn direct_access_allows_only_tailscale_and_loopback() {
+        for ip in [
+            "100.64.0.0",
+            "100.64.0.1",
+            "100.100.100.100",
+            "100.127.255.255",
+            "127.0.0.1",
+            "127.1.2.3",
+            "::1",
+            "fd7a:115c:a1e0::",
+            "fd7a:115c:a1e0::1",
+            "fd7a:115c:a1e0:ffff:ffff:ffff:ffff:ffff",
+            "::ffff:100.101.102.103",
+            "::ffff:127.0.0.1",
+        ] {
+            assert!(
+                is_tailscale_or_loopback(ip.parse().unwrap()),
+                "rejected {ip}"
+            );
+        }
+        for ip in [
+            "100.63.255.255",
+            "100.128.0.0",
+            "192.168.1.10",
+            "10.0.0.5",
+            "172.16.0.1",
+            "169.254.1.1",
+            "8.8.8.8",
+            "0.0.0.0",
+            "::",
+            "fd7a:115c:a1df:ffff:ffff:ffff:ffff:ffff",
+            "fd7a:115c:a1e1::",
+            "fe80::1",
+            "2001:db8::1",
+            "::ffff:192.168.1.10",
+            "::ffff:100.128.0.1",
+            // IPv4-compatible (not mapped) addresses are not IPv4 peers.
+            "::100.64.0.1",
+        ] {
+            assert!(
+                !is_tailscale_or_loopback(ip.parse().unwrap()),
+                "accepted {ip}"
+            );
+        }
+    }
 
     #[tokio::test]
     async fn manual_restart_interrupts_retry_wait() {

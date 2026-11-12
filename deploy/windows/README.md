@@ -154,6 +154,21 @@ the same unless you remove the machine from the tailnet and add it again.
 already encrypted end-to-end by Tailscale (WireGuard), and the API server isn't
 reachable from anywhere else.
 
+### RustDesk client on the server PC: change its direct access port
+
+If you also run the RustDesk client on the server PC, its "direct IP access"
+listener (on by default in this fork) wants TCP **21118**, the same port hbbs
+uses for WebSocket, even though the firewall keeps 21118 closed. Only one of them
+can have it. When the client loses, its direct access silently stays off (its log
+says `Failed to start direct server on port: 21118`); connecting by ID still
+works.
+
+On **this PC only**, open RustDesk **Settings -> Security**, and under **Enable
+direct IP access** set **Port** to `21120`, then click **Apply**. To connect to
+this PC directly (without the ID server), enter its name or IP with the port,
+e.g. `winbox.tail1234.ts.net:21120` or `100.101.102.103:21120`. Leave the port at
+the default on all other devices.
+
 ### Optional: limit which tailnet devices can use the server
 
 The Windows Firewall rules let in **any** device on your tailnet. If you share your
