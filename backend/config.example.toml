@@ -1,0 +1,26 @@
+# rdbackend configuration. Start with:  rdbackend --config config.toml
+# Relative paths below are resolved against the directory of this file
+# (important for the Windows service, whose working directory is System32).
+
+# Address and port to listen on. 21114 is the port the RustDesk client derives
+# from the ID server address (ID server port 21116 minus 2) when no explicit
+# "API server" is configured.
+#
+# Recommended: bind only to this machine's Tailscale IP so the API is not
+# reachable from other networks. Find it with `tailscale ip -4`, e.g.:
+#   bind = "100.101.102.103:21114"
+# "0.0.0.0:21114" listens on every interface (rely on the firewall then).
+bind = "0.0.0.0:21114"
+
+# SQLite database file (created on first run).
+db_path = "rdbackend.sqlite3"
+
+# Directory for daily-rotated log files (rdbackend.log.YYYY-MM-DD).
+# The initial admin password is written here on first run.
+log_dir = "logs"
+
+# Optional settings (defaults shown).
+# Days a client login token stays valid; the client asks to log in again afterwards.
+# token_ttl_days = 30
+# A device is shown online if its last heartbeat is at most this many seconds old.
+# online_timeout_secs = 60
