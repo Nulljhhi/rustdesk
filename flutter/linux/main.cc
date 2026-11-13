@@ -8,6 +8,7 @@
 #define RUSTDESK_LIB_PATH "librustdesk.so"
 typedef bool (*RustDeskCoreMain)();
 bool gIsConnectionManager = false;
+bool gIsConnectionPopup = false;
 
 void print_help_install_pkg(const char* so);
 
@@ -73,6 +74,9 @@ int main(int argc, char** argv) {
     if (strcmp(argv[i], "--cm") == 0) {
       gIsConnectionManager = true;
     }
+  }
+  if (argc > 1 && strcmp(argv[1], "--connection-popup") == 0) {
+    gIsConnectionPopup = true;
   }
   g_autoptr(MyApplication) app = my_application_new();
   return g_application_run(G_APPLICATION(app), argc, argv);

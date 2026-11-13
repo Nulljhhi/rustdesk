@@ -28,6 +28,7 @@ GtkWidget *find_gl_area(GtkWidget *widget);
 void try_set_transparent(GtkWindow* window, GdkScreen* screen, FlView* view);
 
 extern bool gIsConnectionManager;
+extern bool gIsConnectionPopup;
 
 // --- Side mouse button support (back/forward) ---
 // Flutter's Linux embedder doesn't deliver X11 button 8/9 events to Dart.
@@ -155,6 +156,11 @@ static void my_application_activate(GApplication* application) {
   if (gIsConnectionManager) {
     width = 300;
     height = 490;
+  }
+  if (gIsConnectionPopup) {
+    // Keep in sync with _kConnectionPopupSize in connection_popup.dart.
+    width = 320;
+    height = 86;
   }
   gtk_window_set_default_size(window, width, height);   // <-- comment this line
   // gtk_widget_show(GTK_WIDGET(window));

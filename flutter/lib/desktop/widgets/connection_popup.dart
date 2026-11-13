@@ -93,13 +93,22 @@ Future<void> runConnectionPopup(List<String> args) async {
     windowButtonVisibility: false,
   );
   await windowManager.waitUntilReadyToShow(options, null);
-  await windowManager.setResizable(false);
+  // On Linux `windowManager.setResizable(false)` pins the window at the runner's
+  // initial size, see `setResizable()` in common.dart.
+  if (!isLinux) {
+    await windowManager.setResizable(false);
+  }
   await windowManager.setAlignment(Alignment.bottomRight);
   if (isMacOS) {
     await windowManager.setVisibleOnAllWorkspaces(true,
         visibleOnFullScreen: true);
   }
   await windowManager.show(inactive: true);
+  if (isLinux) {
+    // ensure initial window size to be changed
+    await windowManager.setSizeAlignment(
+        _kConnectionPopupSize, Alignment.bottomRight);
+  }
   await windowManager.setOpacity(1);
   Timer(kConnectionPopupDuration, () => exit(0));
 }
