@@ -1131,6 +1131,16 @@ jobs:
           # Opt-in, and its macOS tests run nowhere else.
           cargo test --locked --release -p clipboard --features unix-file-copy-paste
 
+      # Without a certificate the bundle's seal is left broken by the build, and macOS
+      # reports a quarantined download as "damaged". Not hardened runtime: ad-hoc code
+      # has no Team ID for library validation to match the bundled frameworks against.
+      - name: Ad-hoc sign app
+        if: env.MACOS_P12_BASE64 == null && env.UPLOAD_ARTIFACT == 'true'
+        run: |
+          APP=./flutter/build/macos/Build/Products/Release/RustDesk.app
+          codesign --force --deep --sign - "$APP"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+
       - name: create unsigned dmg
         if: env.UPLOAD_ARTIFACT == 'true'
         run: |
